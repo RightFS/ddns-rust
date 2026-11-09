@@ -39,7 +39,25 @@
   const storage = { get(store,key) { try { return window[store].getItem(key); } catch (_) { return null; } }, set(store,key,value) { try { window[store].setItem(key,value); return true; } catch (_) { return false; } }, remove(store,key) { try { window[store].removeItem(key); } catch (_) {} } };
   let locale = storage.get('localStorage','ddns.locale') === 'en' ? 'en' : 'zh';
   const t = key => words[locale][key] || key;
-  const state = { token:storage.get('sessionStorage','ddns.token') || '',authenticated:false,connecting:false,authMode:'loading',initialized:null,settings:null,settingsPending:false,config:null,registry:[],status:null,logs:[],dirty:false,jsonDirty:false,runPending:false,saving:false,levelPending:false,refreshing:false,logsPending:false,epoch:0,lastRefresh:null };
+  Object.assign(words.zh, {
+    chooseInterface:'选择网卡', interfaceMissing:'当前列表中找不到', interfaceUnavailable:'无法读取服务端网卡，请重新加载配置。',
+    noInterfaces:'服务端没有可列出的网卡。', noInterfaceAddresses:'此网卡没有该协议的地址。',
+    interfaceRegex:'IP 正则过滤（可选）', invalidInterfaceRegex:'IP 正则必须是字符串，且仅适用于网卡来源。',
+    interfaceRegexHelp:'只更新匹配正则的公网地址。留空时匹配所有公网地址。多个匹配时，按 IP 数值升序取第一个。',
+    interfacePreview:'匹配结果', interfacePreviewSelected:'将使用', interfacePreviewEmpty:'没有匹配的公网地址。',
+    interfacePreviewError:'正则表达式有误。', interfacePreviewUnavailable:'无法加载匹配结果。',
+    credentialId:'凭据 ID', credentialSecret:'凭据 Secret', credentialToken:'API 令牌'
+  });
+  Object.assign(words.en, {
+    chooseInterface:'Select network interface', interfaceMissing:'Missing from current list', interfaceUnavailable:'Could not load server interfaces. Reload the configuration to try again.',
+    noInterfaces:'No server interfaces were found.', noInterfaceAddresses:'This interface has no addresses for this family.',
+    interfaceRegex:'IP regex filter (optional)', invalidInterfaceRegex:'The IP regex must be a string and is only supported for interface sources.',
+    interfaceRegexHelp:'Only matching public addresses can be published. Leave blank to match all public addresses. If several match, the first in ascending numeric IP order is used.',
+    interfacePreview:'Matches', interfacePreviewSelected:'Selected for update', interfacePreviewEmpty:'No matching public addresses.',
+    interfacePreviewError:'Invalid regular expression.', interfacePreviewUnavailable:'Could not load matching addresses.',
+    credentialId:'Credential ID', credentialSecret:'Credential Secret', credentialToken:'API token'
+  });
+  const state = { token:storage.get('sessionStorage','ddns.token') || '',authenticated:false,connecting:false,authMode:'loading',initialized:null,settings:null,settingsPending:false,config:null,registry:[],interfaces:null,status:null,logs:[],dirty:false,jsonDirty:false,runPending:false,saving:false,levelPending:false,refreshing:false,logsPending:false,epoch:0,lastRefresh:null };
   let pollTimer = null, searchTimer = null;
   const CONFIGURED='__DDNS_CONFIGURED__';
   const byteLength=value=>new TextEncoder().encode(value).length;
@@ -197,7 +215,8 @@
       if(targets.has(target) || (r.record_id!==null && ids.has(id)))throw new Error(t('duplicate'));
       targets.add(target);if(r.record_id!==null)ids.add(id);
       if(typeof r.enabled!=='boolean'||typeof r.create_if_missing!=='boolean')throw new Error(t('invalidBoolean'));
-      checkKeys(r.ip_source,['kind','value']);if(!['url','static','interface'].includes(r.ip_source.kind))throw new Error(t('invalidSource'));requireStrings(r.ip_source,['value']);
+      checkKeys(r.ip_source,['kind','value','regex']);if(!['url','static','interface'].includes(r.ip_source.kind))throw new Error(t('invalidSource'));requireStrings(r.ip_source,['value']);
+      if(Object.hasOwn(r.ip_source,'regex') && (r.ip_source.kind!=='interface' || typeof r.ip_source.regex!=='string'))throw new Error(t('invalidInterfaceRegex'));
     }); return c;
   }
   async function api(path,options={}) {
@@ -243,6 +262,76 @@
     const pending=state.registry.filter(p=>!p.implemented),box=$('pendingProviders');box.replaceChildren();box.hidden=!pending.length;
     if(pending.length){box.append(node('strong','',t('pendingProviders')));const list=node('p','',pending.map(p=>`${p.label} (${p.kind})`).join(' · '));box.append(list);}
   }
+  function renderSourceValue(parent, record) {
+    const source=record.ip_source;
+    parent.replaceChildren();
+    if(source.kind!=='interface'){
+      const placeholder=source.kind==='url'?'https://api.ipify.org':record.record_type==='AAAA'?'2001:db8::1':'203.0.113.1';
+      field(parent,'ipValue',source.value,v=>source.value=v,{placeholder});
+      parent.append(node('p','field-help',t(`${source.kind}Help`)));
+      return;
+    }
+    const interfaces=(state.interfaces || []).filter(item=>item.ipv4.length || item.ipv6.length);
+    const options=[['','chooseInterface'],...interfaces.map(item=>[item.name,null])];
+    const addresses=node('p','field-help');
+    const preview=node('p','field-help interface-preview');
+    preview.setAttribute('role','status');
+    let previewTimer, previewRevision=0;
+    const family=record.record_type==='AAAA'?'ipv6':'ipv4';
+    const showAddresses=()=>{
+      const ips=interfaces.find(item=>item.name===source.value)?.[family];
+      if(ips){
+        const label=family==='ipv6'?'IPv6':'IPv4';
+        addresses.textContent=`${label} · ${ips.length?ips.join(', '):t('noInterfaceAddresses')}`;
+      }else if(!state.interfaces){
+        addresses.textContent=t('interfaceUnavailable');
+      }else if(source.value){
+        addresses.textContent=`${source.value} (${t('interfaceMissing')})`;
+      }else{
+        addresses.textContent=interfaces.length?'':t('noInterfaces');
+      }
+      addresses.hidden=!addresses.textContent;
+    };
+    const updatePreview=()=>{
+      clearTimeout(previewTimer);
+      const revision=++previewRevision;
+      const selected=interfaces.some(item=>item.name===source.value);
+      preview.textContent='';
+      if(!selected && !source.regex)return;
+      const body=json({
+        record_type:record.record_type,
+        ip_source:{...source,value:selected?source.value:''}
+      });
+      const current=()=>revision===previewRevision && $('records').contains(preview);
+      previewTimer=setTimeout(async()=>{
+        if(!current())return;
+        try {
+          const matches=await api('/api/interfaces/preview',{method:'POST',body});
+          if(!current() || !selected)return;
+          preview.textContent=matches.length
+            ? `${t('interfacePreview')} · ${matches.map((ip,index)=>index===0?`${ip} (${t('interfacePreviewSelected')})`:ip).join(', ')}`
+            : t('interfacePreviewEmpty');
+        } catch(err) {
+          if(current())preview.textContent=t(err.status===422?'interfacePreviewError':'interfacePreviewUnavailable');
+        }
+      },200);
+    };
+    const selected=interfaces.some(item=>item.name===source.value)?source.value:'';
+    field(parent,'interface',selected,v=>{
+      source.value=v;
+      showAddresses();
+      updatePreview();
+    },{options,required:false});
+    showAddresses();
+    parent.append(addresses);
+    field(parent,'interfaceRegex',source.regex,v=>{
+      if(v)source.regex=v;
+      else delete source.regex;
+      updatePreview();
+    },{required:false});
+    parent.append(preview,node('p','field-help',t('interfaceRegexHelp')));
+    updatePreview();
+  }
   function renderConfig() {
     const c=state.config;if(!c)return;
     $('interval').value=c.interval_secs;$('timeout').value=c.timeout_secs;$('configLogLevel').value=c.log_level;
@@ -256,10 +345,9 @@
         for(const f of [...d.credential_fields,...d.options.filter(f=>['endpoint_env','client_ip_env'].includes(f.key))]) {
           const draft=credentialDrafts.get(p),stored=p.credentials?.[f.key];
           const value=draft && Object.hasOwn(draft,f.key)?draft[f.key]:stored===CONFIGURED?'':stored || '';
-          const label=f.key==='endpoint_env'?'directEndpoint':f.key==='client_ip_env'?'directClientIp':credentialLabel(p.kind,f);
+          const label={endpoint_env:'directEndpoint',client_ip_env:'directClientIp',secret_id_env:'credentialId',secret_key_env:'credentialSecret',token_env:'credentialToken'}[f.key];
           const input=field(fields,label,value,v=>{let values=credentialDrafts.get(p);if(!values){values={};credentialDrafts.set(p,values);}values[f.key]=v;},{type:'password',required:false,placeholder:stored===CONFIGURED?t('configured'):t('notConfigured')});
           input.dataset.directCredential=f.key;input.autocomplete='new-password';
-          if(!['endpoint_env','client_ip_env'].includes(f.key))input.parentNode.children[0].textContent=`${f.label} · ${t('directCredentials')}`;
         }
       }
       card.append(fields);if(d){card.append(node('p','field-help',t('directHelp')));const refs=node('details','credential-refs');refs.append(node('summary','',t('advancedRefs')));const grid=node('div','descriptor-grid');d.credential_fields.forEach(f=>{const input=field(grid,credentialLabel(p.kind,f),p[f.key],v=>p[f.key]=v,{required:false,placeholder:f.env_prefix+({secret_id_env:'SECRET_ID',secret_key_env:'SECRET_KEY',token_env:'TOKEN'})[f.key]});input.maxLength=128;input.pattern=`(?:${f.env_prefix}|DDNS_)[A-Z0-9_]+`;input.title=t('invalidEnv');});refs.append(grid);optionsForm(refs,d.options.filter(f=>['endpoint_env','client_ip_env'].includes(f.key)).map(f=>({...f,required:false})),p.options,'providerOptions',p.kind);card.append(refs);optionsForm(card,d.options.filter(f=>!['endpoint_env','client_ip_env'].includes(f.key)),p.options,'providerOptions',p.kind);}if(batchHelp[p.kind])card.append(node('p','field-help',t(batchHelp[p.kind])));$('providers').append(card);});
@@ -269,12 +357,18 @@
       field(grid,'recordName',r.name,v=>r.name=v,{placeholder:'home-ipv4'});
       const provider=field(grid,'provider',r.provider,v=>{r.provider=v;r.options=retainOptions(r.options,recordDescriptor(r)?.record_options || []);r.record_id=null;if(recordDescriptor(r)?.kind==='callback')r.create_if_missing=false;if(recordDescriptor(r)?.kind==='namecheap')r.record_line='default';markDirty();renderConfig();notice(t('switchDraft'));},{options:[['','chooseProvider'],...c.providers.map(p=>[p.name,null])]});provider.dataset.providerIndex=String(index);
       field(grid,'domain',r.domain,v=>r.domain=v,{placeholder:'example.com'});field(grid,'subdomain',r.subdomain,v=>r.subdomain=v,{placeholder:'@ / home'});
-      field(grid,'recordType',r.record_type,v=>r.record_type=v,{options:[['A',null],['AAAA',null]]});const lineInput=field(grid,'recordLine',r.record_line,v=>r.record_line=v,{placeholder:locale==='zh'?'默认':'default'});if(['callback','namecheap'].includes(recordDescriptor(r)?.kind))lineInput.disabled=true;
+      const sourceValue=node('div','ip-source-value');
+      field(grid,'recordType',r.record_type,v=>{r.record_type=v;renderSourceValue(sourceValue,r);},{options:[['A',null],['AAAA',null]]});const lineInput=field(grid,'recordLine',r.record_line,v=>r.record_line=v,{placeholder:locale==='zh'?'默认':'default'});if(['callback','namecheap'].includes(recordDescriptor(r)?.kind))lineInput.disabled=true;
       const ttlInput=field(grid,'ttl',r.ttl,v=>r.ttl=v,{type:'number',min:recordDescriptor(r)?.kind==='huaweicloud'?300:['baiducloud','edgeone','namecheap'].includes(recordDescriptor(r)?.kind)?60:1});ttlInput.max=recordDescriptor(r)?.kind==='namecheap'?60000:recordDescriptor(r)?.kind==='baiducloud'?3600:recordDescriptor(r)?.kind==='edgeone'?86400:604800;if(recordDescriptor(r)?.kind==='dynv6'){ttlInput.disabled=true;ttlInput.parentNode.append(node('small','credential-description',t('providerManagedTtl')));}const idInput=field(grid,'recordId',r.record_id,v=>r.record_id=v===''?null:v,{required:false});if(recordDescriptor(r)?.kind==='callback'){idInput.disabled=true;grid.append(node('p','field-help',t('callbackIgnoredHelp')));}idInput.maxLength=128;idInput.pattern='[A-Za-z0-9_.-]{1,128}';idInput.title=t('invalidRecordId');idInput.addEventListener('input',()=>idInput.setCustomValidity(idInput.value==='0' || idInput.validity.patternMismatch?t('invalidRecordId'):''));idInput.parentNode.append(node('small','credential-description',t(recordDescriptor(r)?.kind==='namecheap'?'namecheapIdHelp':'recordIdHelp')+(['tencentcloud','alidns','dnspod'].includes(recordDescriptor(r)?.kind)?` ${t('numericRecordIdHelp')}`:'')));
       const rd=recordDescriptor(r);if(batchHelp[rd?.kind])grid.append(node('p','field-help',t(batchHelp[rd.kind])));if(rd?.kind==='hipmdnsmgr')grid.append(node('p','field-help record-line-help',t('nativeLineHelp')));if(rd?.kind==='namesilo')grid.append(node('p','field-help',t('namesiloSafetyHelp')));if(rd?.kind==='gcore')grid.append(node('p','field-help',t('gcoreSafetyHelp')));if(rd?.kind==='spaceship')grid.append(node('p','field-help',t('spaceshipSafetyHelp')));if(rd?.kind==='alidns')grid.append(node('p','field-help record-line-help',t('aliLineHelp')));
-      const source=node('div','ip-source'); const hint=node('p','field-help');
-      let valueInput;field(source,'ipKind',r.ip_source.kind,v=>{r.ip_source.kind=v;hint.textContent=t(`${v}Help`);valueInput.placeholder=v==='url'?'https://api.ipify.org':v==='static'?(r.record_type==='AAAA'?'2001:db8::1':'203.0.113.1'):'eth0';},{options:[['url','url'],['static','static'],['interface','interface']]});
-      valueInput=field(source,'ipValue',r.ip_source.value,v=>r.ip_source.value=v,{placeholder:r.ip_source.kind==='url'?'https://api.ipify.org':r.ip_source.kind==='interface'?'eth0':'IP'});hint.textContent=t(`${r.ip_source.kind}Help`);source.append(hint);grid.append(source);
+      const source=node('div','ip-source');
+      field(source,'ipKind',r.ip_source.kind,v=>{
+        if(v==='interface' || r.ip_source.kind==='interface')r.ip_source.value='';
+        if(v!=='interface')delete r.ip_source.regex;
+        r.ip_source.kind=v;
+        renderSourceValue(sourceValue,r);
+      },{options:[['url','url'],['static','static'],['interface','interface']]});
+      renderSourceValue(sourceValue,r);source.append(sourceValue);grid.append(source);
       const toggles=node('div','record-toggles');checkbox(toggles,'enabled',r.enabled,v=>{r.enabled=v;card.classList.toggle('is-disabled',!v);});checkbox(toggles,'createMissing',r.create_if_missing,v=>r.create_if_missing=v,rd?.kind==='callback');card.append(grid);if(rd)optionsForm(card,rd.record_options,r.options,'recordOptions');card.append(toggles);$('records').append(card);});
     if(!c.records.length)$('records').append(node('p','empty-inline',t('emptyRecords')));
     if(!state.jsonDirty)$('configJson').value=json(maskedConfig(c));updateControls();
@@ -307,6 +401,18 @@
   }
   function acceptConfig(value) {const c=validateConfig(value);state.config=maskedConfig(c);credentialDrafts=new WeakMap();state.dirty=false;state.jsonDirty=false;$('runtimeLevel').value=c.log_level;renderConfig();renderStatus();}
   async function loadConfig() {const epoch=state.epoch;const c=await api('/api/config');if(epoch===state.epoch)acceptConfig(c);}
+  async function loadInterfaces() {
+    const epoch=state.epoch;
+    let interfaces=null;
+    try {
+      const value=await api('/api/interfaces');
+      if(Array.isArray(value) && value.every(item=>typeof item?.name==='string' &&
+        [item.ipv4,item.ipv6].every(ips=>Array.isArray(ips) && ips.every(ip=>typeof ip==='string'))))interfaces=value;
+    } catch(_) {
+      // Keep configuration available if interface discovery fails.
+    }
+    if(epoch===state.epoch)state.interfaces=interfaces;
+  }
   function acceptSettings(value) {
     checkKeys(value,['listen','active_listen','username','token_configured']);
     if(typeof value.listen!=='string' || typeof value.active_listen!=='string' || typeof value.username!=='string' || typeof value.token_configured!=='boolean')throw new Error(t('apiFailure'));
@@ -327,11 +433,12 @@
   }
   function disconnect(show=true) {
     state.epoch++;clearInterval(pollTimer);pollTimer=null;clearTimeout(searchTimer);storage.remove('sessionStorage','ddns.token');wipePasswords();
-    Object.assign(state,{token:'',authenticated:false,connecting:false,authMode:state.initialized===false?'setup':'login',config:null,settings:null,registry:[],status:null,logs:[],dirty:false,jsonDirty:false,lastRefresh:null,runPending:false});
+    Object.assign(state,{token:'',authenticated:false,connecting:false,authMode:state.initialized===false?'setup':'login',config:null,settings:null,registry:[],interfaces:null,status:null,logs:[],dirty:false,jsonDirty:false,lastRefresh:null,runPending:false});
     $('token').value='';$('providers').replaceChildren();$('records').replaceChildren();$('configJson').value='';$('interval').value='';$('timeout').value='';for(const id of ['settingsListen','activeListen','settingsUsername'])$(id).value='';text('tokenConfigured','');renderRegistry();renderStatus();renderLogs();updateControls();if(show)notice(t('disconnected'));
   }
   async function enterConsole(config=null) {
     const epoch=state.epoch;state.registry=validateRegistry(await api('/api/providers'));
+    await loadInterfaces();if(epoch!==state.epoch)return;
     if(config)acceptConfig(config);else await loadConfig();if(epoch!==state.epoch)return;
     state.authenticated=true;state.authMode='login';state.initialized=true;wipePasswords();updateControls();
     if(state.token)storage.set('sessionStorage','ddns.token',state.token);
@@ -381,7 +488,7 @@
   $('jsonDetails').addEventListener('toggle',()=>{if($('jsonDetails').open&&state.config&&!state.jsonDirty)$('configJson').value=json(maskedConfig(state.config));});
   $('configJson').addEventListener('input',()=>{state.jsonDirty=true;updateControls();});
   $('applyJson').addEventListener('click',()=>{try{const c=validateConfig(JSON.parse($('configJson').value));for(const p of c.providers)for(const value of Object.values(p.credentials || {}))if(value && value!==CONFIGURED)throw new Error(t('rawSecretJson'));state.config=c;credentialDrafts=new WeakMap();state.jsonDirty=false;markDirty();renderConfig();notice(t('jsonApplied'),'success');}catch(err){notice(`${t('invalidConfig')}\n${err.message}`,'error');}});
-  $('reloadConfig').addEventListener('click',async()=>{if((state.dirty||state.jsonDirty)&&!window.confirm(t('unsavedConfirm')))return;state.saving=true;updateControls();try{await loadConfig();}catch(err){notice(err.message,'error');}finally{state.saving=false;updateControls();}});
+  $('reloadConfig').addEventListener('click',async()=>{if((state.dirty||state.jsonDirty)&&!window.confirm(t('unsavedConfirm')))return;state.saving=true;const epoch=state.epoch;updateControls();try{await loadInterfaces();if(epoch===state.epoch)await loadConfig();}catch(err){notice(err.message,'error');}finally{state.saving=false;updateControls();}});
   $('saveConfig').addEventListener('click',async()=>{
     if(state.saving||!state.config)return;if(state.jsonDirty){notice(t('jsonPending'),'error');return;}
     try{validateConfig(configPayload(state.config));for(const input of $('configFields').querySelectorAll('input,select'))if(!input.checkValidity()){input.reportValidity();return;}}catch(err){notice(`${t('invalidConfig')}\n${err.message}`,'error');return;}

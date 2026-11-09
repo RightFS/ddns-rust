@@ -1,5 +1,6 @@
 use crate::{
     config::{Config, RecordConfig},
+    interfaces,
     provider::ProviderError,
     providers::Outcome,
 };
@@ -63,6 +64,15 @@ fn public_ip(ip: IpAddr) -> bool {
         }
     }
 }
+pub fn matching_interface_ips<'a>(
+    addresses: &'a [IpAddr],
+    pattern: Option<&'a regex::Regex>,
+) -> impl Iterator<Item = IpAddr> + 'a {
+    addresses.iter().copied().filter(move |ip| {
+        public_ip(*ip) && pattern.is_none_or(|pattern| pattern.is_match(&ip.to_string()))
+    })
+}
+
 // Diagnostic errors intentionally own complete context; this is not a hot path.
 #[allow(clippy::result_large_err)]
 pub async fn detect_ip(record: &RecordConfig, timeout: u64) -> Result<String, ProviderError> {
@@ -83,28 +93,38 @@ pub async fn detect_ip(record: &RecordConfig, timeout: u64) -> Result<String, Pr
             )
         })?,
         "interface" => {
-            let interfaces =
-                if_addrs::get_if_addrs().map_err(|e| fail("InterfaceReadFailed", e.to_string()))?;
-            let mut candidates: Vec<_> = interfaces
+            let pattern = record
+                .ip_source
+                .interface_regex()
+                .map_err(|e| fail("InvalidInterfaceRegex", e.to_string()))?;
+            let interface = interfaces::list()
+                .map_err(|e| fail("InterfaceReadFailed", e.to_string()))?
                 .into_iter()
-                .filter(|i| i.name == record.ip_source.value)
-                .map(|i| i.ip())
-                .filter(|ip| ip.is_ipv4() == family && public_ip(*ip))
-                .collect();
-            candidates.sort();
-            candidates.dedup();
-            if candidates.len() != 1 {
-                return Err(fail(
-                    "AmbiguousInterfaceIp",
-                    format!(
-                        "Interface {} has {} public addresses matching {}. Select an explicit static address or HTTPS source instead",
-                        record.ip_source.value,
-                        candidates.len(),
-                        record.record_type
-                    ),
-                ));
-            }
-            candidates[0]
+                .find(|interface| interface.name == record.ip_source.value)
+                .ok_or_else(|| {
+                    fail(
+                        "InterfaceNotFound",
+                        format!("Network interface {} was not found", record.ip_source.value),
+                    )
+                })?;
+            let addresses = if family {
+                &interface.ipv4
+            } else {
+                &interface.ipv6
+            };
+            matching_interface_ips(addresses, pattern.as_ref())
+                .next()
+                .ok_or_else(|| {
+                    error(
+                        "ip_detection",
+                        "NoMatchingInterfaceIp",
+                        format!(
+                            "Interface {} has no matching public {} address",
+                            interface.name, record.record_type
+                        ),
+                        "Check the selected interface, A/AAAA record type and IP regex.",
+                    )
+                })?
         }
         "url" => {
             let local = if family {
@@ -296,5 +316,30 @@ mod tests {
     fn accept_public_addresses() {
         assert!(public_ip("1.1.1.1".parse().unwrap()));
         assert!(public_ip("2606:4700:4700::1111".parse().unwrap()));
+    }
+
+    #[test]
+    fn interface_filter_selects_first_public_match_in_list_order() {
+        let addresses = ["10.0.0.1", "2001:db8::1", "240e::2", "240e::10", "2606::1"]
+            .map(|ip| ip.parse::<IpAddr>().unwrap());
+        let pattern = regex::Regex::new(r"^(2001:db8|240e):").unwrap();
+        assert_eq!(
+            matching_interface_ips(&addresses, Some(&pattern)).collect::<Vec<_>>(),
+            [addresses[2], addresses[3]]
+        );
+        assert_eq!(
+            matching_interface_ips(&addresses, None).next(),
+            Some(addresses[2])
+        );
+        let exact = regex::Regex::new(r"^240e::10$").unwrap();
+        assert_eq!(
+            matching_interface_ips(&addresses, Some(&exact)).next(),
+            Some(addresses[3])
+        );
+        let non_public = regex::Regex::new(r"^10\.").unwrap();
+        assert_eq!(
+            matching_interface_ips(&addresses, Some(&non_public)).next(),
+            None
+        );
     }
 }

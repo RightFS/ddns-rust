@@ -11,6 +11,8 @@ class Element {
   addEventListener(event,handler) { (this.events ||= {})[event]=handler; }
   append(...children) { for (const child of children) { child.parentNode = this; this.children.push(child); } }
   replaceChildren(...children) { this.children = []; this.append(...children); }
+  contains(element) {return walk(this).includes(element);}
+  setAttribute(){}
   querySelectorAll(selector) {return walk(this).filter(e=>selector==='input,select' && ['input','select'].includes(e.tagName));}
   checkValidity() {return true;}
   reportValidity() {return true;}
@@ -61,6 +63,53 @@ function config(kind = 'dynv6') {
 }
 function walk(element) {return [element,...element.children.flatMap(walk)];}
 function text(element) {return walk(element).map(e=>e.textContent).join(' ');}
+
+test('interface source hides addressless adapters and previews matching addresses or a regex error',async()=>{
+  const q=fetchQueue(response(['240e::2','240e::10']),response({error:'Invalid IP regex'},422),response([]));
+  const h=harness('en',q.fetch),c=config();
+  h.state.config=c;
+  h.state.interfaces=[
+    {name:'Wi-Fi',ipv4:['1.1.1.1','1.1.1.2'],ipv6:['240e::2','240e::10']},
+    {name:'Ethernet',ipv4:[],ipv6:[]},
+    {name:'IPv6 only',ipv4:[],ipv6:['240e::20']}
+  ];
+  h.renderConfig();
+  const records=h.elements.get('records');
+  const select=option=>walk(records).find(e=>e.tagName==='select'&&e.children.some(o=>o.value===option));
+  const sourceKind=select('interface');
+  sourceKind.value='interface';sourceKind.events.change();
+  const adapter=select('Wi-Fi');
+  assert.ok(!adapter.children.some(o=>o.value==='Ethernet'));
+  adapter.value='IPv6 only';adapter.events.change();
+  assert.match(text(records),/no addresses for this family/);
+  adapter.value='Wi-Fi';adapter.events.change();
+  assert.match(text(records),/1\.1\.1\.1, 1\.1\.1\.2/);
+  assert.doesNotMatch(text(records),/240e::/);
+  const filter=walk(records).find(e=>e.tagName==='input'&&e.parentNode.children[0].textContent.includes('IP regex'));
+  filter.value='^240e:';filter.events.input();
+  const recordType=select('AAAA');
+  recordType.value='AAAA';recordType.events.change();
+  assert.match(text(records),/240e::2, 240e::10/);
+  assert.doesNotMatch(text(records),/1\.1\.1\.1/);
+  assert.match(text(records),/first in ascending numeric IP order/);
+  h.validateConfig(h.configPayload(c));
+  assert.equal(h.configPayload(c).records[0].ip_source.regex,'^240e:');
+  const preview=()=>walk(records).find(e=>e.className==='field-help interface-preview');
+  const waitForPreview=()=>new Promise(resolve=>setTimeout(resolve,250));
+  await waitForPreview();
+  assert.equal(q.calls[0].url,'/api/interfaces/preview');
+  assert.deepEqual(JSON.parse(q.calls[0].options.body),{record_type:'AAAA',ip_source:{kind:'interface',value:'Wi-Fi',regex:'^240e:'}});
+  assert.equal(preview().textContent,'Matches · 240e::2 (Selected for update), 240e::10');
+  const activeFilter=walk(records).find(e=>e.tagName==='input'&&e.parentNode.children[0].textContent.includes('IP regex'));
+  activeFilter.value='(';activeFilter.events.input();
+  await waitForPreview();
+  assert.equal(preview().textContent,'Invalid regular expression.');
+  activeFilter.value='^2606:';activeFilter.events.input();
+  await waitForPreview();
+  assert.equal(preview().textContent,'No matching public addresses.');
+  sourceKind.value='static';sourceKind.events.change();
+  assert.equal(c.records[0].ip_source.regex,undefined);
+});
 
 test('dynv6 TTL opt-in is required and cannot claim fixed TTL',()=>{
   const h=harness();h.validateConfig(config());
@@ -222,8 +271,11 @@ test('status precedes config cookie resume, and unauthenticated resume shows log
   assert.deepEqual(q.calls.map(c=>c.url),['/api/auth/status','/api/config']);assert.equal(h.state.authMode,'login');assert.equal(h.state.authenticated,false);assert.equal(h.state.config,null);assert.equal(h.elements.get('configFields').disabled,true);assert.equal(h.elements.get('confirmPasswordLabel').hidden,true);
 });
 test('valid cookie resumes full existing console and actual protected settings',async()=>{
-  const q=fetchQueue(response({initialized:true}),response(config()),response(registry),response({running:false,last_run:null}),response([]),response(settings())),h=harness('en',q.fetch);await h.checkAuth();
+  const interfaces=[{name:'eth0',ipv4:['1.1.1.1'],ipv6:[]}];
+  const q=fetchQueue(response({initialized:true}),response(config()),response(registry),response(interfaces),response({running:false,last_run:null}),response([]),response(settings())),h=harness('en',q.fetch);await h.checkAuth();
   assert.equal(h.state.authenticated,true);assert.equal(h.elements.get('authForm').hidden,true);assert.equal(h.elements.get('settingsUsername').value,'admin');assert.equal(h.elements.get('settingsFields').disabled,false);assert.ok(q.calls.every(c=>c.options.credentials==='same-origin' && !c.options.headers.Authorization));
+  assert.ok(q.calls.some(c=>c.url==='/api/interfaces'));
+  assert.equal(h.state.interfaces[0].name,'eth0');
 });
 test('setup conflict and uncertain setup network success recover to login and wipe passwords',async()=>{
   for(const replies of [[response({message:'already initialized'},409)],[new TypeError('offline'),response({initialized:true})]]) {
@@ -232,7 +284,7 @@ test('setup conflict and uncertain setup network success recover to login and wi
   }
 });
 test('account setup response username and cookie session are used without persisting a bearer',async()=>{
-  const q=fetchQueue(response({username:'actual-admin'}),response(registry),response(config()),response({running:false,last_run:null}),response([]),response(settings({username:'actual-admin'}))),h=harness('en',q.fetch);h.state.authMode='setup';h.elements.get('username').value=' admin ';h.elements.get('password').value='password';h.elements.get('confirmPassword').value='password';await h.connect({preventDefault(){}});
+  const q=fetchQueue(response({username:'actual-admin'}),response(registry),response([]),response(config()),response({running:false,last_run:null}),response([]),response(settings({username:'actual-admin'}))),h=harness('en',q.fetch);h.state.authMode='setup';h.elements.get('username').value=' admin ';h.elements.get('password').value='password';h.elements.get('confirmPassword').value='password';await h.connect({preventDefault(){}});
   assert.equal(h.state.authenticated,true);assert.equal(h.elements.get('username').value,'actual-admin');assert.equal(h.state.token,'');assert.equal(h.elements.get('password').value,'');assert.equal(q.calls[0].url,'/api/auth/setup');
 });
 test('direct credential alternatives accept sentinels but retain all explicit provider safety acknowledgements',()=>{
@@ -246,6 +298,7 @@ test('direct credential alternatives accept sentinels but retain all explicit pr
 test('configured direct password controls are blank; edit drafts never enter state, JSON or export mask',()=>{
   for(const locale of ['zh','en']) {const h=harness(locale),c=config('spaceship');c.providers[0].credentials={secret_id_env:sentinel,secret_key_env:sentinel};h.state.config=c;h.renderConfig();
     const inputs=walk(h.elements.get('providers')).filter(e=>e.dataset.directCredential);assert.equal(inputs.length,2);assert.ok(inputs.every(e=>e.type==='password'&&e.value===''&&e.placeholder.includes(locale==='zh'?'已配置':'Configured')));
+    assert.deepEqual(inputs.map(e=>e.parentNode.children[0].textContent),locale==='zh'?['凭据 ID','凭据 Secret']:['Credential ID','Credential Secret']);
     const secret='never-export-this-secret';inputs[1].value=secret;inputs[1].events.input();assert.equal(c.providers[0].credentials.secret_key_env,sentinel);assert.equal(h.configPayload(c).providers[0].credentials.secret_key_env,secret);
     h.elements.get('jsonDetails').open=true;h.elements.get('jsonDetails').events.toggle();assert.ok(!h.elements.get('configJson').value.includes(secret));assert.ok(!JSON.stringify(h.maskedConfig(c)).includes(secret));
     inputs[1].value='';inputs[1].events.input();assert.equal(h.configPayload(c).providers[0].credentials.secret_key_env,'');assert.equal(c.providers[0].credentials.secret_key_env,sentinel);

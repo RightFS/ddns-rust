@@ -1,5 +1,6 @@
 mod config;
 mod engine;
+mod interfaces;
 mod logging;
 mod provider;
 mod providers;
@@ -21,7 +22,11 @@ use config::Config;
 use engine::RunReport;
 use logging::LogControl;
 use serde::{Deserialize, Serialize};
-use std::{net::SocketAddr, path::PathBuf, sync::Arc};
+use std::{
+    net::{IpAddr, SocketAddr},
+    path::PathBuf,
+    sync::Arc,
+};
 use subtle::ConstantTimeEq;
 use tokio::sync::{Mutex, Notify, RwLock};
 
@@ -188,6 +193,63 @@ async fn security_headers(request: Request<axum::body::Body>, next: Next) -> Res
 }
 async fn get_config(State(app): State<App>) -> Json<Config> {
     Json(app.config.read().await.redacted())
+}
+async fn get_interfaces() -> ApiResult<Vec<interfaces::NetworkInterface>> {
+    let mut interfaces = list_interfaces()?;
+    interfaces.retain(|interface| !interface.ipv4.is_empty() || !interface.ipv6.is_empty());
+    Ok(Json(interfaces))
+}
+fn list_interfaces() -> Result<Vec<interfaces::NetworkInterface>, (StatusCode, Json<ApiError>)> {
+    interfaces::list().map_err(|err| {
+        api_error(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("Could not list network interfaces: {err}"),
+        )
+    })
+}
+#[derive(Deserialize)]
+struct InterfacePreview {
+    record_type: String,
+    ip_source: config::IpSource,
+}
+async fn preview_interface(Json(preview): Json<InterfacePreview>) -> ApiResult<Vec<IpAddr>> {
+    let ipv4 = match preview.record_type.as_str() {
+        "A" => true,
+        "AAAA" => false,
+        _ => {
+            return Err(api_error(
+                StatusCode::BAD_REQUEST,
+                "Record type must be A or AAAA",
+            ));
+        }
+    };
+    if preview.ip_source.kind != "interface" {
+        return Err(api_error(
+            StatusCode::BAD_REQUEST,
+            "IP source must be interface",
+        ));
+    }
+    let pattern = preview
+        .ip_source
+        .interface_regex()
+        .map_err(|_| api_error(StatusCode::UNPROCESSABLE_ENTITY, "Invalid IP regex"))?;
+    if preview.ip_source.value.is_empty() {
+        return Ok(Json(Vec::new()));
+    }
+    let interface = list_interfaces()?
+        .into_iter()
+        .find(|interface| interface.name == preview.ip_source.value);
+    let Some(interface) = interface else {
+        return Ok(Json(Vec::new()));
+    };
+    let addresses = if ipv4 {
+        &interface.ipv4
+    } else {
+        &interface.ipv6
+    };
+    Ok(Json(
+        engine::matching_interface_ips(addresses, pattern.as_ref()).collect(),
+    ))
 }
 async fn save_config(State(app): State<App>, Json(mut config): Json<Config>) -> ApiResult<Config> {
     let _guard = app.run_lock.try_lock().map_err(|_| {
@@ -479,6 +541,8 @@ fn router(app: App) -> Router {
             get(|| async { Json(providers::registry::catalog()) }),
         )
         .route("/config", get(get_config).put(save_config))
+        .route("/interfaces", get(get_interfaces))
+        .route("/interfaces/preview", post(preview_interface))
         .route("/status", get(status))
         .route("/run", post(run_now))
         .route("/logs", get(logs))
@@ -1720,6 +1784,7 @@ mod api_tests {
             local.records[1].ip_source = crate::config::IpSource {
                 kind: "url".into(),
                 value: "https://no-outbound.invalid/".into(),
+                regex: None,
             };
             *app.config.write().await = local;
             let report = json_body(
@@ -1746,6 +1811,7 @@ mod api_tests {
         invalid.records[1].ip_source = crate::config::IpSource {
             kind: "url".into(),
             value: "https://no-outbound.invalid/".into(),
+            regex: None,
         };
         *app.config.write().await = invalid;
         let report = json_body(
@@ -1806,6 +1872,7 @@ mod api_tests {
         c.records[0].ip_source = crate::config::IpSource {
             kind: "url".into(),
             value: "https://no-outbound.invalid/".into(),
+            regex: None,
         };
         use sha2::{Digest, Sha256};
         c.records[0].record_id = Some(format!(

@@ -84,9 +84,18 @@ IP 来源：
 | --- | --- | --- |
 | `url` | `https://api.ipify.org` | HTTPS 纯文本 IP 接口；A 走 IPv4，AAAA 走 IPv6；禁止 URL 用户信息、查询参数与重定向 |
 | `static` | 公网 IPv4/IPv6 | 用于隔离“检测 IP”和“云 API”故障，也支持手工指定公网地址 |
-| `interface` | `eth0` / `en0` | 选接口上唯一的相应协议公网地址；无地址或多个地址报错，不随机挑一个 |
+| `interface` | `eth0` / `en0` / `Ethernet` | 在指定网卡上按 A 选 IPv4、按 AAAA 选 IPv6，可用 `regex` 过滤公网地址 |
 
-不会发布私有、回环、链路本地、CGNAT 或文档示例地址。接口处于家庭 NAT 后时通常没有公网 IPv4，应使用 HTTPS 来源。IPv6 隐私地址可能产生多个候选，此时应明确选择静态地址或使用 HTTPS 来源。
+Linux、macOS 和 Windows 的管理页会列出已分配 IP 的服务端网卡，并显示所选网卡上与记录类型对应的地址。网卡来源的可选字段 `regex` 使用 Rust 正则语法，匹配页面显示的 IP 文本（IPv6 为压缩格式）。留空时匹配所有同协议公网地址。页面会预览匹配结果并标出将使用的地址。多个匹配时，按 IP 数值升序取第一个。没有匹配时，该记录报错并跳过更新。
+
+```toml
+[records.ip_source]
+kind = "interface"
+value = "en0"
+regex = '^240e:'
+```
+
+不会发布私有、回环、链路本地、CGNAT 或文档示例地址。接口处于家庭 NAT 后时通常没有公网 IPv4，应使用 HTTPS 来源。
 
 Web 配置默认可直接填写实际凭据；也可通过高级环境变量引用使用服务商对应的大写环境变量名称（`TENCENT_` / `CLOUDFLARE_` / `ALIDNS_` / `DNSPOD_` / `PORKBUN_` / `DESEC_` / `DNSLA_` / `GODADDY_` / `VERCEL_` / `NS1_` / `NAMECOM_` / `RAINYUN_` / `CLOUDNS_` / `DYNV6_` / `SPACESHIP_` / `GCORE_` / `NAMESILO_` / `HIPM_` / `HUAWEICLOUD_` / `BAIDUCLOUD_` / `EDGEONE_` / `TRAFFICROUTE_` / `CALLBACK_` / `NAMECHEAP_`）或通用 `DDNS_` 前缀。多个账号可使用不同变量名，进程启动后改变环境变量需要重启。Cloudflare、deSEC、Vercel、NS1、雨云、dynv6、Gcore、NameSilo、HiPM 和独立回调使用 `token_env`，其他当前已支持服务商使用 `secret_id_env` / `secret_key_env`；这里的字段只表示引用名称，具体密钥格式由服务商决定。
 

@@ -96,6 +96,18 @@ pub struct RecordConfig {
 pub struct IpSource {
     pub kind: String,
     pub value: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub regex: Option<String>,
+}
+
+impl IpSource {
+    pub fn interface_regex(&self) -> Result<Option<regex::Regex>, regex::Error> {
+        self.regex
+            .as_deref()
+            .filter(|pattern| !pattern.is_empty())
+            .map(regex::Regex::new)
+            .transpose()
+    }
 }
 
 pub fn valid_level(level: &str) -> bool {
@@ -650,6 +662,9 @@ impl Config {
             )) {
                 return Err("Duplicate DNS target; configure only one updater per record".into());
             }
+            if r.ip_source.regex.is_some() && r.ip_source.kind != "interface" {
+                return Err("IP source regex is only supported for network interfaces".into());
+            }
             match r.ip_source.kind.as_str() {
                 "static" => {
                     let ip: IpAddr = r
@@ -681,6 +696,9 @@ impl Config {
                     if r.ip_source.value.trim().is_empty() {
                         return Err("Interface name must not be empty".into());
                     }
+                    r.ip_source.interface_regex().map_err(|err| {
+                        format!("Invalid interface IP regex for {}: {err}", r.name)
+                    })?;
                 }
                 _ => return Err("IP source kind must be static, url or interface".into()),
             }
@@ -750,9 +768,34 @@ mod tests {
             ip_source: IpSource {
                 kind: "static".into(),
                 value: "1.1.1.1".into(),
+                regex: None,
             },
         }
     }
+    #[test]
+    fn interface_regex_is_optional_and_validated_before_save() {
+        let mut c = Config::default();
+        c.records.push(record());
+        c.records[0].ip_source = toml::from_str("kind = 'interface'\nvalue = 'en0'").unwrap();
+        c.validate().unwrap();
+        c.records[0].ip_source.regex = Some("^240e:".into());
+        c.validate().unwrap();
+        let loaded: Config = toml::from_str(&toml::to_string(&c).unwrap()).unwrap();
+        assert_eq!(loaded.records[0].ip_source.regex.as_deref(), Some("^240e:"));
+        c.records[0].ip_source.regex = Some("(".into());
+        assert!(
+            c.validate()
+                .unwrap_err()
+                .contains("Invalid interface IP regex")
+        );
+        c.records[0].ip_source.kind = "static".into();
+        assert!(
+            c.validate()
+                .unwrap_err()
+                .contains("only supported for network interfaces")
+        );
+    }
+
     #[test]
     fn direct_credentials_validate_without_environment_references() {
         let mut c = Config::default();
@@ -1559,6 +1602,7 @@ mod tests {
         c.records[0].ip_source = IpSource {
             kind: "static".into(),
             value: "1.1.1.1".into(),
+            regex: None,
         };
         c
     }

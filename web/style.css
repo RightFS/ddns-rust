@@ -10,5 +10,8 @@
 @media(max-width:520px){.descriptor-grid{grid-template-columns:1fr}.provider-fields{grid-template-columns:1fr}}
 @media(prefers-reduced-motion:reduce){*{transition:none!important;scroll-behavior:auto!important}}@media print{.sidebar,.topbar,.auth-card,.action-buttons,.config-panel,.log-toolbar,.page-footer{display:none}main{margin:0}.content{padding:0}.panel{break-inside:avoid;box-shadow:none}.log-entries{max-height:none;overflow:visible}}
 
+.ip-source-value{display:grid;gap:8px;min-width:0}
+.ip-source .ip-source-value p{margin:0;overflow-wrap:anywhere}
+.ip-source .interface-preview:empty{display:none}
 /* Account setup and write-only settings share the existing console palette. */
 [hidden]{display:none!important}.auth-card{flex-wrap:wrap}.auth-card form{display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end;min-width:0}.auth-card label{display:flex;flex-direction:column;gap:6px;font-size:12px}.auth-card input{width:190px}.auth-card details{width:100%}.auth-card summary{cursor:pointer;color:var(--muted);font-size:12px}.auth-card details form{margin-top:12px}.settings-panel{margin-bottom:24px}.settings-panel form{padding:0 26px 24px}.settings-panel .button{margin-top:16px}.credential-refs{margin-top:16px}.credential-refs summary{font-size:12px;color:var(--muted);cursor:pointer}.credential-refs .descriptor-grid{margin-top:12px}@media(max-width:520px){.auth-card form,.auth-card label,.auth-card input{width:100%}.settings-panel form{padding:0 17px 20px}}

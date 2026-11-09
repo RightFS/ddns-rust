@@ -74,7 +74,13 @@ async fn first_run_account_config_settings_and_restart_contract() {
         .await
         .unwrap();
     assert_eq!(json(response).await["initialized"], false);
-    for route in ["/api/config", "/api/settings", "/api/logs", "/api/status"] {
+    for route in [
+        "/api/config",
+        "/api/settings",
+        "/api/logs",
+        "/api/status",
+        "/api/interfaces",
+    ] {
         assert_eq!(
             router
                 .clone()
@@ -114,6 +120,75 @@ async fn first_run_account_config_settings_and_restart_contract() {
         .to_owned();
     assert!(set_cookie.contains("HttpOnly") && set_cookie.contains("SameSite=Strict"));
     let cookie = set_cookie.split(';').next().unwrap();
+    let response = router
+        .clone()
+        .oneshot(request("GET", "/api/interfaces", None, Some(cookie)))
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let interfaces = json(response).await;
+    for interface in interfaces.as_array().unwrap() {
+        assert!(!interface["name"].as_str().unwrap().is_empty());
+        assert!(
+            !interface["ipv4"].as_array().unwrap().is_empty()
+                || !interface["ipv6"].as_array().unwrap().is_empty()
+        );
+        for (key, ipv4) in [("ipv4", true), ("ipv6", false)] {
+            let addresses: Vec<std::net::IpAddr> = interface[key]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|ip| ip.as_str().unwrap().parse().unwrap())
+                .collect();
+            assert!(addresses.iter().all(|ip| ip.is_ipv4() == ipv4));
+            assert!(addresses.windows(2).all(|pair| pair[0] < pair[1]));
+        }
+    }
+    let preview = serde_json::json!({
+        "record_type": "AAAA",
+        "ip_source": {"kind": "interface", "value": "", "regex": "("}
+    });
+    let response = router
+        .clone()
+        .oneshot(request(
+            "POST",
+            "/api/interfaces/preview",
+            Some(preview.clone()),
+            None,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    let response = router
+        .clone()
+        .oneshot(request(
+            "POST",
+            "/api/interfaces/preview",
+            Some(preview),
+            Some(cookie),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
+    assert_eq!(json(response).await["error"], "Invalid IP regex");
+    if let Some(name) = interfaces[0]["name"].as_str() {
+        let preview = serde_json::json!({
+            "record_type": "AAAA",
+            "ip_source": {"kind": "interface", "value": name, "regex": "^no-match$"}
+        });
+        let response = router
+            .clone()
+            .oneshot(request(
+                "POST",
+                "/api/interfaces/preview",
+                Some(preview),
+                Some(cookie),
+            ))
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(json(response).await, serde_json::json!([]));
+    }
     assert_eq!(
         router
             .clone()

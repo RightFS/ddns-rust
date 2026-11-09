@@ -58,6 +58,7 @@ async fn unavailable_and_unknown_kinds_fail_at_registry_gate_without_network_fal
         ip_source: crate::config::IpSource {
             kind: "static".into(),
             value: "1.1.1.1".into(),
+            regex: None,
         },
     };
     for kind in kinds {
