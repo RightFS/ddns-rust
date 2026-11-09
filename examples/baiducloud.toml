@@ -1,0 +1,30 @@
+interval_secs = 300
+timeout_secs = 15
+log_level = "debug"
+
+[[providers]]
+name = "baiducloud"
+kind = "baiducloud"
+secret_id_env = "BAIDUCLOUD_ACCESS_KEY_ID"
+secret_key_env = "BAIDUCLOUD_SECRET_ACCESS_KEY"
+[providers.options]
+resource_id = "1263c33f-7d2f-4c42-9d5b-960cffaf26d1" # Actual owned BCD domain resourceId; verify in your account.
+
+[[records]]
+name = "home-baiducloud"
+provider = "baiducloud"
+domain = "example.com" # Exact owned, unexpired RUNNING domain, verified NORMAL or no verification required.
+subdomain = "home" # Relative ASCII/punycode host, or @ for apex.
+record_type = "A"
+record_line = "DEFAULT" # default/默认 aliases; or CMNET/CNC/EDU/SEARCH. Never a wildcard.
+ttl = 600 # Documented BCD API/Java SDK range: 60..3600 seconds; never clamped.
+# record_id = "950" # Actual canonical positive decimal BCD ID (kept as a string locally).
+# Recognized authoritative DNS pairs: ns1/ns2.bdydns.cn or ns3/ns4.baidudns.xyz.
+# Stopped, ambiguous, CNAME, delegated NS and undocumented selected metadata are refused.
+# Empty HTTP200 write acknowledgements require full readback. No CAS or automatic write retry.
+# Other Baidu DNS products, custom DNS, advanced weight/remark controls are not supported.
+create_if_missing = false
+enabled = false # Review credentials/ownership and dry-run before enabling.
+[records.ip_source]
+kind = "url"
+value = "https://api.ipify.org"

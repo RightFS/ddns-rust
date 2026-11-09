@@ -1,0 +1,42 @@
+# Independent UNVERIFIED callback capability, NOT a readable DNS record adapter.
+# Server operator must set CALLBACK_TOKEN and CALLBACK_ENDPOINT outside this file.
+# CALLBACK_ENDPOINT must be a canonical full HTTPS URL with a plain ASCII path.
+# No query, userinfo, fragment, template, percent escapes, redirects or TLS bypass.
+# Private HTTPS origins are operator-controlled and allowed. No live API needed.
+# The receiver must agree to this fixed JSON POST schema (not ddns-go templates):
+# {domain: FQDN, ip: plain IP, record_type: A/AAAA, ttl: metadata, delivery_id: UUID}
+# Authorization: Bearer CALLBACK_TOKEN. No arbitrary JSON/template/header options.
+# HTTP 2xx (including 202 or JSON containing an error) means HTTP acceptance ONLY.
+# It does not verify DNS, observe a remote IP, or prove downstream/business success.
+# EVERY real run delivers again even for an unchanged IP, with a fresh UUID.
+# Receiver idempotency is NOT guaranteed. Inspect uncertain delivery before retry.
+# Dry-run validates local settings/credentials and performs ZERO callback I/O.
+interval_secs = 300
+timeout_secs = 30
+log_level = "info"
+
+[[providers]]
+name = "callback"
+kind = "callback"
+token_env = "CALLBACK_TOKEN" # Default example; CALLBACK_* / DDNS_* credential refs allow multiple accounts.
+[providers.options]
+endpoint_env = "CALLBACK_ENDPOINT" # REQUIRED scoped uppercase environment NAME only.
+mode = "json_post" # Required narrow capability; no GET/template protocol.
+verification = "unverified" # Required acknowledgement: never verified DNS success.
+delivery = "every_run" # Required acknowledgement: repeated delivery, no IP cache.
+ttl_mode = "metadata_only" # Required acknowledgement: NO observed/written DNS TTL.
+
+[[records]]
+name = "home-callback"
+provider = "callback"
+domain = "example.com"
+subdomain = "home" # Relative semantics: JSON domain will be home.example.com.
+record_type = "A"
+record_line = "default" # Ignored, NOT callback DNS selection capability.
+ttl = 600 # Request metadata only; NO DNS TTL control claim.
+# No record_id or record options: callbacks cannot select DNS records.
+create_if_missing = false # REQUIRED: callbacks have no DNS creation capability.
+enabled = false # Safe illustrative configuration; opt in only after receiver review.
+[records.ip_source]
+kind = "static"
+value = "8.8.8.8" # Illustrative public IP ONLY; replace with your actual public address.

@@ -1,0 +1,40 @@
+# HiPM DnsMgr is now HiDNS: https://github.com/HiPM-Tech/HiDNS
+# Self-hosted API. There is no global production endpoint.
+# Server operator MUST set HIPM_API_ENDPOINT=https://your-deployment-origin
+# (optional /api suffix); HTTP is refused. Use a TLS reverse proxy.
+# The Web/API configuration contains only the server-owned environment NAME,
+# never the deployment URL. Keep TLS verification on and disable redirects.
+# Set HIPM_API_TOKEN to an API token with explicit allowed_domains whitelist
+# and domain write permission (an empty whitelist means unrestricted in HiDNS).
+# ONLY the audited manager account type aliyun is supported; other mappings
+# (Cloudflare/RRsets/nested managers/ESA/EdgeOne/etc.) fail closed.
+interval_secs = 300
+timeout_secs = 15
+log_level = "debug"
+
+[[providers]]
+name = "hipmdnsmgr"
+kind = "hipmdnsmgr"
+token_env = "HIPM_API_TOKEN"
+[providers.options]
+endpoint_env = "HIPM_API_ENDPOINT" # REQUIRED HIPM_-scoped server environment name.
+# domain_id = "123" # Optional canonical positive MANAGER-LOCAL domain ID.
+# Recommended with restricted tokens whose domain arrays repeat across pages.
+# Exact authenticated name, account ID/type/status and full records still checked.
+
+[[records]]
+name = "home-hipmdnsmgr"
+provider = "hipmdnsmgr"
+domain = "example.com" # Exact managed zone; no suffix/domain_match fallback.
+subdomain = "home"
+record_type = "A"
+record_line = "default" # Actual Aliyun native line ID; preserved, never reset.
+ttl = 600 # Actual readable/writable TTL, strict readback; no provider_default bypass.
+# record_id = "123456789" # Optional native Aliyun ID, NOT a manager-domain ID.
+create_if_missing = false
+enabled = false
+[records.ip_source]
+kind = "url"
+value = "https://api.ipify.org"
+# No CAS is documented; use an exclusive writer. No automatic write retries.
+# Metadata/control changes or uncertain readback stop writes and require inspection.

@@ -1,0 +1,9 @@
+/target/
+/config.toml
+*.web.toml
+/data/
+*.env
+*.log
+/diagnostic*.json
+*.tmp
+.DS_Store

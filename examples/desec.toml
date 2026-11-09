@@ -1,0 +1,23 @@
+interval_secs = 300
+timeout_secs = 15
+log_level = "debug"
+
+[[providers]]
+name = "desec"
+kind = "desec"
+token_env = "DESEC_API_TOKEN"
+
+[[records]]
+name = "home-desec"
+provider = "desec"
+domain = "example.dedyn.io"
+subdomain = "home"
+record_type = "A"
+record_line = "默认" # No line concept; ignored.
+ttl = 3600 # Must meet this domain's minimum_ttl; diagnostic reports it.
+# IDs are synthetic RRset IDs from diagnostics (e.g. A.home), not numeric IDs.
+create_if_missing = false
+enabled = false
+[records.ip_source]
+kind = "url"
+value = "https://api.ipify.org"

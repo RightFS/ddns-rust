@@ -1,0 +1,26 @@
+interval_secs = 300
+timeout_secs = 15
+log_level = "debug"
+
+[[providers]]
+name = "ali"
+kind = "alidns"
+secret_id_env = "ALIDNS_ACCESS_KEY_ID"
+secret_key_env = "ALIDNS_ACCESS_KEY_SECRET"
+[providers.options]
+region = "cn-hangzhou"
+
+[[records]]
+name = "home-alidns"
+provider = "ali"
+domain = "example.com"
+subdomain = "home"
+record_type = "A"
+record_line = "default" # Chinese 默认 is also accepted and mapped to default.
+ttl = 600
+# record_id = "123456789"
+create_if_missing = false
+enabled = false
+[records.ip_source]
+kind = "url"
+value = "https://api.ipify.org"

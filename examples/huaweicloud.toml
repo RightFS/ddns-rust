@@ -1,0 +1,38 @@
+interval_secs = 300
+timeout_secs = 15
+log_level = "debug"
+
+[[providers]]
+name = "huaweicloud"
+kind = "huaweicloud"
+secret_id_env = "HUAWEICLOUD_ACCESS_KEY_ID"
+secret_key_env = "HUAWEICLOUD_SECRET_ACCESS_KEY"
+[providers.options]
+region = "cn-north-4" # Required plain official DNS SDK region; no URL overrides.
+project_id = "replace-with-regional-iam-project-id" # Required; no IAM discovery.
+# zone_id = "replace-with-native-zone-id" # Optional; exact ID/name checked, no fallback.
+
+[[records]]
+name = "home-huaweicloud"
+provider = "huaweicloud"
+domain = "example.com" # Exact existing public ACTIVE hosted zone; never created.
+subdomain = "home" # @ for apex; relative ASCII/punycode hostname.
+record_type = "A" # AAAA supported.
+record_line = "默认" # Only default_view; no routed/geographic/weighted policies.
+ttl = 300 # Schema 1..2147483647; rollout conservatively requires >=300.
+# The 300s floor is NOT a claimed account minimum. APIs expose no account
+# minimum TTL; account restrictions may reject writes. Never clamps/retries.
+# record_id = "replace-with-native-rrset-id" # String; missing/mismatch never creates.
+# Record options may specify zone_id, but must agree with provider zone_id.
+# Dedicated ACTIVE singleton IP RRsets only, weight=1, non-system, no aliases,
+# healthcheck, multivalue or unknown settings. Description preserved on PUT.
+# Signed provider-owned HTTPS endpoint; client must disable redirects/retries.
+# Writes return async 202; one readback must confirm ACTIVE exact IP/TTL/settings.
+# Pending/uncertain outcomes are errors, not success. Inspect before retrying.
+# No conditional write API: use one writer; readchecks cannot eliminate races.
+# Permanent AK/SK only, no temporary security token or alternate endpoint.
+create_if_missing = false
+enabled = false # Enable only after diagnostic and dry-run.
+[records.ip_source]
+kind = "url"
+value = "https://api.ipify.org"

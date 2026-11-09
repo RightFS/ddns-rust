@@ -1,0 +1,24 @@
+interval_secs = 300
+timeout_secs = 15
+log_level = "debug"
+
+[[providers]]
+name = "dnsla"
+kind = "dnsla"
+secret_id_env = "DNSLA_API_ID"
+secret_key_env = "DNSLA_API_SECRET"
+
+[[records]]
+name = "home-dnsla"
+provider = "dnsla"
+domain = "example.com"
+subdomain = "home"
+record_type = "A"
+record_line = "默认" # Default route. Use an explicit ID for an existing routed record.
+ttl = 600
+# record_id = "85369994254488576" # Keep large IDs quoted, never a JavaScript number.
+create_if_missing = false
+enabled = false
+[records.ip_source]
+kind = "url"
+value = "https://api.ipify.org"

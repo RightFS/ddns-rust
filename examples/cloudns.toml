@@ -1,0 +1,29 @@
+interval_secs = 300
+timeout_secs = 15
+log_level = "debug"
+
+[[providers]]
+name = "cloudns"
+kind = "cloudns"
+secret_id_env = "CLOUDNS_AUTH_ID"
+secret_key_env = "CLOUDNS_AUTH_PASSWORD"
+# API & Resellers: use an API user ID/password, not your website login.
+# [providers.options]
+# auth_type = "sub-auth-id" # Default auth-id; also supports sub-auth-user.
+
+[[records]]
+name = "home-cloudns"
+provider = "cloudns"
+domain = "example.com"
+subdomain = "home" # @ for apex.
+record_type = "A"
+record_line = "默认"
+ttl = 300 # Must appear in the account/zone get-available-ttl response.
+# record_id = "123456"
+# Ordinary master zones and static records only; GeoDNS/failover targets refused.
+# Actual status and notes are not changed. Pre-write reread is not atomic CAS.
+create_if_missing = false
+enabled = false
+[records.ip_source]
+kind = "url"
+value = "https://api.ipify.org"

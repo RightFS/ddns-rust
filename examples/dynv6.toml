@@ -1,0 +1,26 @@
+# dynv6 REST v2 HTTP token, never a TSIG key or write-only update URL.
+interval_secs = 300
+timeout_secs = 15
+log_level = "debug"
+
+[[providers]]
+name = "dynv6"
+kind = "dynv6"
+token_env = "DYNV6_TOKEN"
+[providers.options]
+ttl_mode = "provider_default" # REQUIRED: REST has no readable/writable TTL.
+
+[[records]]
+name = "home-dynv6"
+provider = "dynv6"
+domain = "example.dynv6.net" # Exact authenticated zone, not the parent suffix.
+subdomain = "home" # Child literal records only; @/zone-primary updates refused.
+record_type = "A"
+record_line = "默认"
+ttl = 600 # Ignored by dynv6 under explicit provider_default; NOT actual DNS TTL.
+# record_id = "123" # Optional canonical positive int64 record ID.
+create_if_missing = false
+enabled = false
+[records.ip_source]
+kind = "url"
+value = "https://api.ipify.org"

@@ -1,0 +1,27 @@
+interval_secs = 300
+timeout_secs = 15
+log_level = "debug"
+
+[[providers]]
+name = "rainyun"
+kind = "rainyun"
+token_env = "RAINYUN_API_TOKEN" # Rainyun account API key, sent only in x-api-key.
+[providers.options]
+domain_id = "123" # Required numeric domain product ID; must match exact domain below.
+
+[[records]]
+name = "home-rainyun"
+provider = "rainyun"
+domain = "example.com" # Must use Rainyun default authoritative nameservers, not be held.
+subdomain = "home" # Use @ for apex; ASCII/punycode, no underscores for DDNS targets.
+record_type = "A"
+record_line = "默认" # Or default/DEFAULT; existing LTEL/LCNC/LMOB/LEDU/LSEO/LFOR supported.
+ttl = 600 # Official client choices: 60,300,600,900,1800,3600,7200,14400,28800.
+# record_id = "123456" # Explicit ID preserves its actual line/priority, never repurposes host/type.
+# Only custom targets: Rainyun product-bound, paused, ambiguous and unsafe records are refused.
+# Writes are followed by a full read; inspect uncertain writes manually before trying again.
+create_if_missing = false # Opt-in creation supports DEFAULT only (level=10).
+enabled = false # Review and dry-run first; this example does not make DNS writes.
+[records.ip_source]
+kind = "url"
+value = "https://api.ipify.org"

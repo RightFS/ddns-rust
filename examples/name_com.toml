@@ -1,0 +1,26 @@
+# No credentials are stored here; use production Name.com username/API token.
+interval_secs = 300
+timeout_secs = 15
+log_level = "debug"
+
+[[providers]]
+name = "name-com"
+kind = "name_com"
+secret_id_env = "NAMECOM_USERNAME"
+secret_key_env = "NAMECOM_API_TOKEN"
+# No provider options are supported; production endpoint is fixed.
+
+[[records]]
+name = "home-name-com"
+provider = "name-com"
+domain = "example.com" # Exact account-owned zone, never inferred from suffix.
+subdomain = "home" # Use @ for apex.
+record_type = "A"
+record_line = "默认" # Only default routing is supported.
+ttl = 300 # Name.com minimum 300; application safety maximum 604800.
+# record_id = "12345" # Optional canonical positive int32 ID; prevents fallback.
+create_if_missing = false
+enabled = false # Opt in only after a successful dry-run.
+[records.ip_source]
+kind = "url"
+value = "https://api.ipify.org"

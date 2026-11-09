@@ -1,0 +1,32 @@
+# NameSilo API v1; all API calls require GET with a query key (including writes).
+# Never enable request-URL/proxy logging. Application client disables redirects.
+interval_secs = 300
+timeout_secs = 15
+log_level = "debug"
+
+[[providers]]
+name = "namesilo"
+kind = "namesilo"
+token_env = "NAMESILO_API_KEY"
+# No provider options or endpoint overrides are supported.
+
+[[records]]
+name = "home-namesilo"
+provider = "namesilo"
+domain = "example.com" # Exact active account domain; never inferred from suffix.
+subdomain = "home" # @ sends an empty relative rrhost for apex.
+record_type = "A"
+record_line = "默认"
+ttl = 600 # Application cap 300..604800; 3603/7207 auto-adjust TTLs refused.
+# record_id = "namesilo-<64 lowercase hex digits from diagnostics>"
+# This is a synthetic stable singleton host/type ID, NOT NameSilo's native ID.
+# Native API IDs rotate on every update; preserved privately for API verification.
+create_if_missing = false
+enabled = false # Enable only after a successful read-only dry-run.
+# Basic DNS only: all NS1/NS2/NS3.DNSOWL.COM, Active, no verification/forwarding.
+# Dedicated singleton A/AAAA only; custom/premium NS, aliases and delegation refused.
+# Use an exclusive writer. No CAS/write retries. DNS publication can take 5 minutes.
+# JSON lists must contain explicit arrays/pager; omitted fields are not absence.
+[records.ip_source]
+kind = "url"
+value = "https://api.ipify.org"

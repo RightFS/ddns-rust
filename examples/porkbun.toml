@@ -1,0 +1,23 @@
+interval_secs = 300
+timeout_secs = 15
+log_level = "debug"
+
+[[providers]]
+name = "porkbun"
+kind = "porkbun"
+secret_id_env = "PORKBUN_API_KEY"
+secret_key_env = "PORKBUN_SECRET_API_KEY"
+
+[[records]]
+name = "home-porkbun"
+provider = "porkbun"
+domain = "example.com"
+subdomain = "home"
+record_type = "A"
+record_line = "默认" # No line concept; ignored.
+ttl = 600 # API minimum depends on account; higher minimum errors are preserved.
+create_if_missing = false
+enabled = false
+[records.ip_source]
+kind = "url"
+value = "https://api.ipify.org"

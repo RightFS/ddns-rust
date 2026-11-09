@@ -1,0 +1,44 @@
+interval_secs = 300
+timeout_secs = 15
+log_level = "debug"
+
+[[providers]]
+name = "namecheap"
+kind = "namecheap"
+# Account API username/key, NOT the per-domain Dynamic DNS password.
+secret_id_env = "NAMECHEAP_API_USER"
+secret_key_env = "NAMECHEAP_API_KEY"
+[providers.options]
+scope = "basicdns_plain"
+write_mode = "exclusive_full_zone" # Explicit consent to WHOLE host-array replacement.
+environment = "production" # Or sandbox, separate account/key/allowlist; no fallback.
+sld = "example" # Explicit domain parts; no PSL/registrable-domain guesses.
+tld = "com" # For example.co.uk: sld=example, tld=co.uk.
+client_ip_env = "NAMECHEAP_SERVER_IP" # Server's public egress IPv4, NOT DDNS target.
+# Set this reference in the server process and whitelist its IPv4 in Namecheap.
+# Fixed vendor API XML endpoint; no URL/ClientIp value is stored in configuration.
+# Only exact owned registered BasicDNS; no FreeDNS/PremiumDNS/custom/failover/DDNS.
+# All zone rows must be active and plain A/AAAA/TXT/CNAME/NS/MX (MX mode only).
+# Disabled/app/friendly metadata, missing controls, CAA/ALIAS/SRV/redirect/MXE
+# or any unsupported row rejects the ENTIRE snapshot before planning/no-op/write.
+# API EmailType is deliberately OMITTED: vendor guarantees mailmode preservation,
+# including mail records synthesized from an existing OX/FWD/GMAIL preset.
+# No CAS/atomic read-write promise. Require exclusive ownership of the whole zone.
+# Fresh complete reads + one form POST + complete readback; no write retry.
+
+[[records]]
+name = "home-namecheap"
+provider = "namecheap"
+domain = "example.com" # Must equal sld.tld exactly; no domain creation.
+subdomain = "home" # Documented relative labels or @/empty apex; not full trailing-dot names.
+record_type = "A" # AAAA also supported; singleton target owner/type only.
+record_line = "default"
+ttl = 600 # 60..60000; unrelated TTL/MXPref/native values always retained.
+# Initial subset: canonical decimal TTL/MXPref; non-MX MXPref must be observed 10.
+# Other numeric spellings/preferences reject before plans, not an alleged API limit.
+# No native HostId pinning. Stable logical namecheap-<sha256> ID is owner/type scoped.
+create_if_missing = false
+enabled = false # Enable only after read diagnostics and a safe dry-run.
+[records.ip_source]
+kind = "url"
+value = "https://api.ipify.org"

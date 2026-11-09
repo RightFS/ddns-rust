@@ -1,0 +1,26 @@
+interval_secs = 300
+timeout_secs = 15
+log_level = "debug"
+
+[[providers]]
+name = "legacy-dnspod"
+kind = "dnspod"
+# Legacy DNSPod API Token ID / Token, NOT Tencent SecretId / SecretKey.
+# Traditional API supports the main account only.
+secret_id_env = "DNSPOD_TOKEN_ID"
+secret_key_env = "DNSPOD_TOKEN"
+
+[[records]]
+name = "home-dnspod"
+provider = "legacy-dnspod"
+domain = "example.com"
+subdomain = "home"
+record_type = "A"
+record_line = "默认"
+ttl = 600
+# record_id = "123456789"
+create_if_missing = false
+enabled = false
+[records.ip_source]
+kind = "url"
+value = "https://api.ipify.org"

@@ -1,0 +1,46 @@
+interval_secs = 300
+timeout_secs = 15
+log_level = "debug"
+
+[[providers]]
+name = "edgeone"
+kind = "edgeone"
+secret_id_env = "EDGEONE_SECRET_ID"
+secret_key_env = "EDGEONE_SECRET_KEY"
+[providers.options]
+mode = "dns" # Native TEODNS, NOT reverse-proxy Origin or an OriginGroup.
+scope = "teodns" # Explicit ordinary-DNS scope acknowledgement.
+api_version = "2022-09-01" # No API-version fallback.
+zone_id = "zone-replace-me" # Exact existing NS/full hosted zone ID, required.
+# Fixed https://teo.tencentcloudapi.com/ endpoint; no endpoint/region override.
+# Required reads: DescribeZones, DescribeDnsRecords, DescribeAccelerationDomains,
+# DescribeApplicationProxies. Authorize these teo actions on the exact zone.
+# Writes additionally require ModifyDnsRecords; opt-in native DNS creation needs
+# CreateDnsRecord. Tencent Cloud SecretId/SecretKey, not legacy DNSPod Token.
+
+[[records]]
+name = "home-edgeone"
+provider = "edgeone"
+domain = "example.com" # Must match zone_id's exact active, unlocked NS/full site.
+subdomain = "home" # @ for apex; ASCII/punycode, no wildcard target.
+record_type = "A" # AAAA also supported; a single literal address only.
+record_line = "Default" # Exact TEODNS Location; existing Location is preserved.
+ttl = 300 # Observed/writable DNS TTL: 60..86400, validated before dry-run/no-op.
+# record_id = "record-replace-me" # Native TEODNS ID, never GroupId/source ID.
+# Duplicate matches require explicit ID; disabled/Weight=0 targets are rejected.
+# Partial update sends only RecordId + Content + TTL; preserves Location, Weight,
+# Priority, status and all other ordinary DNS settings by documented omission.
+# Unknown DNS/proxy controls, CNAME and delegated NS conflicts are refused.
+# Acceleration domains (even offline/pending or matching wildcards) and four-layer
+# hostname proxies are refused: changing an origin is NOT a DNS-record mutation.
+# CNAME/partial, DNSPod-hosted, Pages and OriginGroup modes are NOT supported;
+# there is no DNSPod fallback or origin auto-creation. Only genuine CreateDnsRecord
+# on a full/NS site can be opted into. No site/acceleration/origin is ever created.
+# One writer is required: no conditional API. Fresh full pre/post-write snapshots,
+# strict RequestId acknowledgement; pending/mismatched post-read means uncertain,
+# NOT success. No automatic write retry. Inspect provider before manual retry.
+create_if_missing = false
+enabled = false # Enable only after successful diagnostic/dry-run.
+[records.ip_source]
+kind = "url"
+value = "https://api.ipify.org"

@@ -1,0 +1,38 @@
+interval_secs = 300
+timeout_secs = 15
+log_level = "info"
+
+[[providers]]
+name = "tencent"
+secret_id_env = "TENCENT_SECRET_ID"
+secret_key_env = "TENCENT_SECRET_KEY"
+
+[[records]]
+name = "home-ipv4"
+provider = "tencent"
+domain = "example.com"
+subdomain = "home"
+record_type = "A"
+record_line = "默认"
+ttl = 600
+# record_id = 123456789  # Set this when more than one record matches
+create_if_missing = false
+# Diagnostics include disabled records, but real updates skip them.
+enabled = false
+[records.ip_source]
+kind = "url"
+value = "https://api.ipify.org"
+
+[[records]]
+name = "home-ipv6"
+provider = "tencent"
+domain = "example.com"
+subdomain = "home"
+record_type = "AAAA"
+record_line = "默认"
+ttl = 600
+create_if_missing = false
+enabled = false
+[records.ip_source]
+kind = "url"
+value = "https://api6.ipify.org"

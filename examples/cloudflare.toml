@@ -1,0 +1,28 @@
+interval_secs = 300
+timeout_secs = 15
+log_level = "debug"
+
+[[providers]]
+name = "cloudflare"
+kind = "cloudflare"
+token_env = "CLOUDFLARE_API_TOKEN"
+# Token needs Zone:Read + DNS:Edit for this zone.
+# [providers.options]
+# zone_id = "your-zone-id"
+
+[[records]]
+name = "home-cloudflare"
+provider = "cloudflare"
+domain = "example.com"
+subdomain = "home"
+record_type = "A"
+record_line = "默认" # Ignored by providers without record lines.
+ttl = 1 # Cloudflare Auto. Required for proxied records.
+# record_id = "opaque-record-id"
+create_if_missing = false
+enabled = false
+[records.ip_source]
+kind = "url"
+value = "https://api.ipify.org"
+[records.options]
+proxied = "false" # Only applies when creating a missing record, not updates.

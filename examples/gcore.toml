@@ -1,0 +1,35 @@
+interval_secs = 300
+timeout_secs = 15
+log_level = "debug"
+
+[[providers]]
+name = "gcore"
+kind = "gcore"
+token_env = "GCORE_API_KEY"
+[providers.options]
+plan = "free" # Actual plan: free (minimum 120s), pro (30s), enterprise (1s).
+# The documented API does not expose account minimum TTL. Do not declare a
+# cheaper minimum than your actual account supports. TTL must also fit uint32;
+# that is a schema bound, not proof of acceptance under account-specific policy.
+
+[[records]]
+name = "home-gcore"
+provider = "gcore"
+domain = "example.com" # Exact existing enabled primary hosted zone; never created.
+subdomain = "home" # @ for zone apex.
+record_type = "A" # AAAA also supported.
+record_line = "默认" # No line concept; ignored.
+ttl = 300 # Validated even in dry-run; never clamped.
+# Optional record_id is a synthetic stable RRset ID, e.g. A.home.example.com.
+# It is NOT resource_records[].id (output-only native member identity).
+# Only enabled singleton static RRsets are writable. Multiple members/content,
+# pickers, failover, CDN links and undocumented settings fail closed.
+# Metadata may be empty or contain only string notes (RRset and member).
+# Routing/backup/unknown metadata are refused, never silently removed.
+# PUT replaces the whole RRset; supported notes are preserved, IDs not sent.
+# One writer is required: the API has no documented conditional update.
+create_if_missing = false
+enabled = false # Enable only after a successful diagnostic/dry-run.
+[records.ip_source]
+kind = "url"
+value = "https://api.ipify.org"

@@ -1,0 +1,46 @@
+interval_secs = 300
+timeout_secs = 15
+log_level = "debug"
+
+[[providers]]
+name = "trafficroute"
+kind = "trafficroute"
+# Volcengine AccessKeyID/SecretAccessKey, NOT Tencent TC3 or DNSPod tokens.
+secret_id_env = "TRAFFICROUTE_SECRET_ID"
+secret_key_env = "TRAFFICROUTE_SECRET_KEY"
+[providers.options]
+scope = "public_dns" # TrafficRoute authoritative cloud DNS ONLY, not GTM.
+api_version = "2018-08-01"
+region = "cn-beijing" # Explicit current official DNS SDK signing region, fixed.
+zone_id = "1234" # Replace with exact existing positive decimal Volcengine ZID.
+# Fixed https://dns.volcengineapi.com/; no arbitrary endpoint or region overrides.
+# Reads: ListZones, QueryZone, ListRecords, ListRecordSets, ListLines, QueryRecord.
+# Mutations: UpdateRecord, optionally CreateRecord; scope permission to exact zone.
+# No hosted-zone creation, GTM, HTTPDNS, PrivateZone or DNSPod fallback.
+
+[[records]]
+name = "home-trafficroute"
+provider = "trafficroute"
+domain = "example.com" # Exact owned ZID/domain; Stage=0 and IsNSCorrect=true.
+subdomain = "home" # Relative Host, @ apex; dots are literal relative labels.
+record_type = "A" # AAAA also supported, single static address only.
+record_line = "default" # Exact ListLines Value for this ZID; default/默认/empty alias.
+ttl = 600 # Actual observed/writable TTL; edition minimum validated on each read.
+# TTL: free 600+, professional 300+, enterprise 60+, ultimate/exclusive 1+;
+# all editions maximum 86400. Existing record TTL is never fabricated.
+# record_id = "3170534137672596377" # RecordID string, NOT base64 RecordSetID.
+# Initial scope requires a singleton target across every line, WeightEnabled=false.
+# Actual existing Weight must be 1..100 (common legal range); it is preserved.
+# Preserve actual Weight/Remark/Type/Enable/Tags/routing by documented omission:
+# UpdateRecord sends only existing RecordID+raw Host+raw Line, new Value+TTL.
+# Unknown controls, GTMLock/nonempty or missing Tags, disabled records, weighted
+# or multi-record RRsets, custom lines/groups, CNAME and child-NS conflicts fail
+# before unchanged/dry-run/create. Hosted-subdomain zones are unsupported.
+# Fresh full unfiltered pre/post-write inventories plus QueryRecord ID reads.
+# No CAS exists: exclusively own this record. Unacknowledged/pending/mismatched
+# post-read means uncertain, NOT success. No automatic mutation retry.
+create_if_missing = false
+enabled = false # Enable only after diagnostics and a successful dry-run.
+[records.ip_source]
+kind = "url"
+value = "https://api.ipify.org"

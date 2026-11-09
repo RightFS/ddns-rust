@@ -1,0 +1,26 @@
+interval_secs = 300
+timeout_secs = 15
+log_level = "debug"
+
+[[providers]]
+name = "vercel"
+kind = "vercel"
+token_env = "VERCEL_API_TOKEN"
+# [providers.options]
+# team_id = "team_your_id"
+
+[[records]]
+name = "home-vercel"
+provider = "vercel"
+domain = "example.com"
+subdomain = "home"
+record_type = "A"
+record_line = "默认" # No routing-line concept.
+ttl = 600 # Supported desired range is 60..604800; no clamp.
+# record_id = "native-record-uid"
+# Domain must be verified and use Vercel DNS; system records are refused.
+create_if_missing = false
+enabled = false
+[records.ip_source]
+kind = "url"
+value = "https://api.ipify.org"

@@ -1,0 +1,25 @@
+interval_secs = 300
+timeout_secs = 15
+log_level = "debug"
+
+[[providers]]
+name = "ns1"
+kind = "nsone"
+token_env = "NS1_API_KEY"
+
+[[records]]
+name = "home-ns1"
+provider = "ns1"
+domain = "example.com"
+subdomain = "home"
+record_type = "A"
+record_line = "默认" # No routing-line concept in this basic adapter.
+ttl = 600
+# record_id = "native-record-id"
+# Dedicated static ONE-answer RRset only; no filters, regions, links or feeds.
+# Secondary and split-horizon zones are refused. Use a single writer.
+create_if_missing = false
+enabled = false
+[records.ip_source]
+kind = "url"
+value = "https://api.ipify.org"

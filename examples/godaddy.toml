@@ -1,0 +1,25 @@
+interval_secs = 300
+timeout_secs = 15
+log_level = "debug"
+
+[[providers]]
+name = "godaddy"
+kind = "godaddy"
+secret_id_env = "GODADDY_API_KEY"
+secret_key_env = "GODADDY_API_SECRET"
+
+[[records]]
+name = "home-godaddy"
+provider = "godaddy"
+domain = "example.com"
+subdomain = "home"
+record_type = "A"
+record_line = "默认" # No routing-line concept.
+ttl = 600 # No silent clamp; account/API errors are preserved.
+# record_id = "A.home" # Synthetic RRset identifier shown in diagnostics.
+# Only a dedicated single-value RRset is supported; multiple IPs are refused.
+create_if_missing = false
+enabled = false
+[records.ip_source]
+kind = "url"
+value = "https://api.ipify.org"

@@ -1,0 +1,30 @@
+interval_secs = 300 # Domain info is limited to 5 calls/domain/300s; an IP update needs 4.
+timeout_secs = 15
+log_level = "debug"
+
+[[providers]]
+name = "spaceship"
+kind = "spaceship"
+secret_id_env = "SPACESHIP_API_KEY"
+secret_key_env = "SPACESHIP_API_SECRET"
+# API scopes: domains:read, dnsrecords:read, dnsrecords:write.
+# No provider or record options; no production endpoint override.
+
+[[records]]
+name = "home-spaceship"
+provider = "spaceship"
+domain = "example.com" # Exact registered, verified, unsuspended domain using basic nameservers.
+subdomain = "home" # Use @ for apex; ASCII/punycode relative host.
+record_type = "A"
+record_line = "默认" # No routing-line concept; default is also accepted.
+ttl = 600 # Documented range 60..3600, also enforced during dry-run.
+# record_id = "rrset-<64 lowercase hex digits>" # Synthetic host/type identity, NOT API/native ID.
+# Only singleton custom A/AAAA RRsets are mutable; multi-value/member IDs are refused.
+# PUT adds the new value with force=false; after verification DELETE names only the old value.
+# Partial failures may leave BOTH IPs present. Inspect/recover manually before retrying.
+# Product/personalNs groups, unknown settings, CNAME/ALIAS and child delegations are refused.
+create_if_missing = false
+enabled = false # Review and dry-run first; this example makes no DNS writes.
+[records.ip_source]
+kind = "url"
+value = "https://api.ipify.org"
